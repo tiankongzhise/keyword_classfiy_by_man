@@ -100,54 +100,47 @@ class KeywordClassifierAuto:
             return np.zeros(model.vector_size, dtype=np.float64)
     
     def cluster_keywords(self, keyword_vectors: np.ndarray, eps: float, min_samples: int) -> np.ndarray:
-        """使用简单的距离阈值聚类"""
+        """使用DBSCAN进行关键词聚类"""
         try:
             # 确保输入数据为二维数组
             if len(keyword_vectors.shape) == 1:
                 keyword_vectors = keyword_vectors.reshape(1, -1)
             
-            # 将NumPy数组转换为Python列表
-            vectors = keyword_vectors.tolist()
-            n = len(vectors)
+            # 将NumPy数组转换为Python列表进行处理
+            vectors_list = keyword_vectors.tolist()
+            n = len(vectors_list)
             
-            # 初始化标签，-1表示未分配
-            labels = [-1] * n
-            current_label = 0
+            # 计算距离矩阵
+            distance_matrix = [[0.0] * n for _ in range(n)]
             
-            # 对每个未分配的点进行聚类
+            # 手动计算余弦距离
             for i in range(n):
-                if labels[i] != -1:
-                    continue
+                for j in range(i + 1, n):
+                    # 计算点积
+                    dot_product = sum(a * b for a, b in zip(vectors_list[i], vectors_list[j]))
+                    # 计算向量范数
+                    norm_i = sum(x * x for x in vectors_list[i]) ** 0.5
+                    norm_j = sum(x * x for x in vectors_list[j]) ** 0.5
                     
-                # 找到当前点的邻居
-                neighbors = []
-                for j in range(n):
-                    if i == j:
-                        continue
-                        
-                    # 计算余弦相似度
-                    dot_product = sum(a * b for a, b in zip(vectors[i], vectors[j]))
-                    norm_i = sum(x * x for x in vectors[i]) ** 0.5
-                    norm_j = sum(x * x for x in vectors[j]) ** 0.5
-                    
+                    # 避免除零错误
                     if norm_i == 0 or norm_j == 0:
                         similarity = 0
                     else:
                         similarity = dot_product / (norm_i * norm_j)
                     
-                    # 如果相似度大于阈值，加入邻居集合
-                    if similarity >= (1 - eps):
-                        neighbors.append(j)
-                
-                # 如果邻居数量达到最小要求，形成一个新的簇
-                if len(neighbors) + 1 >= min_samples:
-                    labels[i] = current_label
-                    for j in neighbors:
-                        if labels[j] == -1:
-                            labels[j] = current_label
-                    current_label += 1
+                    # 将相似度转换为距离
+                    distance = 1 - similarity
+                    distance_matrix[i][j] = distance
+                    distance_matrix[j][i] = distance
             
-            return np.array(labels)
+            # 转换回NumPy数组
+            distance_matrix = np.array(distance_matrix)
+            
+            # 使用DBSCAN进行聚类
+            clustering = DBSCAN(eps=eps, min_samples=min_samples, metric='precomputed')
+            labels = clustering.fit_predict(distance_matrix)
+            
+            return labels
         except Exception as e:
             print(f"聚类错误: {str(e)}")
             return np.zeros(len(keyword_vectors), dtype=np.int32)
